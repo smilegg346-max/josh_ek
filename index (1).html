@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Sky Rush</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#07111f;font-family:Arial,sans-serif;color:#fff;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(3,8,18,.75);z-index:20}
+.panel{width:min(520px,90vw);text-align:center;padding:30px 20px;border:1px solid rgba(255,255,255,.15);border-radius:24px;background:#0d1b30}
+h1{margin:0 0 10px;font-size:46px}
+p{color:#b8c7dc;line-height:1.5}
+button{border:0;border-radius:14px;padding:14px 32px;font-size:20px;font-weight:bold;background:#ffd34d;color:#17120a}
+#help{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);font-size:13px;opacity:.7;z-index:5;pointer-events:none;text-align:center;white-space:nowrap}
+#joy{display:none;position:fixed;left:22px;bottom:22px;width:160px;height:160px;border-radius:50%;background:rgba(30,45,70,.55);border:2px solid rgba(255,255,255,.25);z-index:10;touch-action:none}
+#stick{position:absolute;width:66px;height:66px;left:47px;top:47px;border-radius:50%;background:rgba(255,211,77,.9);border:2px solid #fff;pointer-events:none}
+@media (pointer:coarse),(max-width:700px){
+ #joy{display:block}
+ #help{font-size:11px;bottom:7px}
+ h1{font-size:38px}
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="start">
+  <div class="panel">
+    <h1>SKY RUSH</h1>
+    <p>Collect the golden stars, dodge the red meteors, and survive!</p>
+    <p><b>PC:</b> WASD / Arrow Keys<br><b>Phone:</b> Touch the joystick</p>
+    <button id="play" type="button">PLAY</button>
+  </div>
+</div>
+
+<div id="joy"><div id="stick"></div></div>
+<div id="help">PC: WASD / Arrows &nbsp; • &nbsp; Phone: joystick</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const start=document.getElementById("start");
+const play=document.getElementById("play");
+const joy=document.getElementById("joy");
+const stick=document.getElementById("stick");
+
+let W=innerWidth,H=innerHeight,dpr=1;
+let player,stars,meteors,particles,score,best=0,gameOver=false,running=false,last=0;
+const keys=Object.create(null);
+
+function resize(){
+ dpr=Math.min(devicePixelRatio||1,2);
+ W=innerWidth; H=innerHeight;
+ canvas.width=Math.floor(W*dpr); canvas.height=Math.floor(H*dpr);
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener("resize",resize); resize();
+
+try{best=Number(localStorage.getItem("skyRushBest")||0)}catch(e){}
+
+function rand(a,b){return a+Math.random()*(b-a)}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+function spawnStar(){stars.push({x:rand(35,Math.max(36,W-35)),y:rand(80,Math.max(81,H-35)),r:11})}
+function spawnMeteor(){
+ const s=Math.floor(rand(0,4)); let x,y,vx,vy;
+ if(s===0){x=-30;y=rand(0,H);vx=rand(2,4);vy=rand(-1.5,1.5)}
+ if(s===1){x=W+30;y=rand(0,H);vx=-rand(2,4);vy=rand(-1.5,1.5)}
+ if(s===2){x=rand(0,W);y=-30;vx=rand(-1.5,1.5);vy=rand(2,4)}
+ if(s===3){x=rand(0,W);y=H+30;vx=rand(-1.5,1.5);vy=-rand(2,4)}
+ meteors.push({x,y,vx,vy,r:rand(15,25)})
+}
+function burst(x,y,n=16){
+ for(let i=0;i<n;i++){
+  const a=rand(0,Math.PI*2),s=rand(1,5);
+  particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:rand(2,5)})
+ }
+}
+function reset(){
+ player={x:W/2,y:H/2,r:18,speed:5.4};
+ stars=[];meteors=[];particles=[];score=0;gameOver=false;
+ for(let i=0;i<3;i++)spawnStar();
+ for(let i=0;i<2;i++)spawnMeteor();
+}
+
+function startGame(e){
+ if(e)e.preventDefault();
+ start.style.display="none";
+ running=true;
+ reset();
+}
+play.addEventListener("click",startGame);
+play.addEventListener("touchend",startGame,{passive:false});
+
+addEventListener("keydown",e=>{
+ keys[e.key.toLowerCase()]=true;
+ if(e.code==="Space"&&gameOver)reset();
+});
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+/* Touch joystick */
+let touching=false;
+function joystick(e){
+ const r=joy.getBoundingClientRect();
+ const cx=r.left+r.width/2,cy=r.top+r.height/2;
+ let x=e.clientX-cx,y=e.clientY-cy;
+ const max=r.width/2-34;
+ const len=Math.hypot(x,y);
+ if(len>max){x=x/len*max;y=y/len*max}
+ stick.style.transform=`translate(${x}px,${y}px)`;
+ const dead=max*.18;
+ keys.left=x < -dead; keys.right=x > dead;
+ keys.up=y < -dead; keys.down=y > dead;
+}
+function stopJoy(){
+ touching=false;
+ stick.style.transform="";
+ keys.left=keys.right=keys.up=keys.down=false;
+}
+joy.addEventListener("pointerdown",e=>{
+ e.preventDefault();touching=true;
+ try{joy.setPointerCapture(e.pointerId)}catch(_){}
+ if(gameOver)reset();
+ joystick(e);
+});
+joy.addEventListener("pointermove",e=>{if(touching)joystick(e)});
+joy.addEventListener("pointerup",stopJoy);
+joy.addEventListener("pointercancel",stopJoy);
+joy.addEventListener("lostpointercapture",stopJoy);
+
+function update(dt){
+ if(gameOver)return;
+ let dx=(keys.d||keys.arrowright||keys.right?1:0)-(keys.a||keys.arrowleft||keys.left?1:0);
+ let dy=(keys.s||keys.arrowdown||keys.down?1:0)-(keys.w||keys.arrowup||keys.up?1:0);
+ if(dx||dy){
+  const l=Math.hypot(dx,dy);dx/=l;dy/=l;
+  player.x+=dx*player.speed*dt*60;
+  player.y+=dy*player.speed*dt*60;
+ }
+ player.x=Math.max(player.r,Math.min(W-player.r,player.x));
+ player.y=Math.max(65,Math.min(H-player.r,player.y));
+
+ if(!update.starTimer)update.starTimer=0;
+ if(!update.spawnTimer)update.spawnTimer=0;
+ update.starTimer+=dt;update.spawnTimer+=dt;
+ if(update.starTimer>2.2&&stars.length<5){spawnStar();update.starTimer=0}
+ const interval=Math.max(.45,1.25-score/180);
+ if(update.spawnTimer>interval){spawnMeteor();update.spawnTimer=0}
+
+ for(let i=stars.length-1;i>=0;i--)if(dist(player,stars[i])<player.r+stars[i].r){
+  score+=10;burst(stars[i].x,stars[i].y,18);stars.splice(i,1)
+ }
+ for(const m of meteors){
+  m.x+=m.vx*dt*60;m.y+=m.vy*dt*60;
+  if(dist(player,m)<player.r+m.r-5){
+   burst(player.x,player.y,35);gameOver=true;best=Math.max(best,Math.floor(score));
+   try{localStorage.setItem("skyRushBest",best)}catch(e){}
+  }
+ }
+ meteors=meteors.filter(m=>m.x>-80&&m.x<W+80&&m.y>-80&&m.y<H+80);
+ for(const p of particles){p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.life-=dt*1.7;p.vx*=.98;p.vy*=.98}
+ particles=particles.filter(p=>p.life>0);
+ score+=dt*1.5;
+}
+
+function draw(){
+ const g=ctx.createLinearGradient(0,0,0,H);
+ g.addColorStop(0,"#0b2340");g.addColorStop(1,"#07101d");
+ ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+
+ ctx.fillStyle="rgba(255,255,255,.6)";
+ for(let i=0;i<90;i++){ctx.globalAlpha=.25+((i*17)%70)/100;ctx.fillRect((i*97)%W,(i*53)%H,2,2)}
+ ctx.globalAlpha=1;
+
+ ctx.fillStyle="rgba(4,10,20,.55)";ctx.fillRect(0,0,W,58);
+ ctx.fillStyle="#fff";ctx.font="bold 20px Arial";ctx.fillText("⭐ "+Math.floor(score),22,36);
+ ctx.fillStyle="#9fb2cc";ctx.font="15px Arial";ctx.fillText("BEST: "+best,140,36);
+
+ if(player){
+  const glow=ctx.createRadialGradient(player.x,player.y,2,player.x,player.y,45);
+  glow.addColorStop(0,"rgba(82,190,255,.5)");glow.addColorStop(1,"rgba(82,190,255,0)");
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(player.x,player.y,45,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#4fc3ff";ctx.beginPath();ctx.arc(player.x,player.y,player.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#e9f8ff";ctx.beginPath();ctx.arc(player.x-6,player.y-5,5,0,Math.PI*2);ctx.fill();
+ }
+
+ for(const s of stars){
+  ctx.fillStyle="#ffd34d";ctx.beginPath();
+  for(let i=0;i<10;i++){const a=i*Math.PI/5;const r=i%2?s.r:s.r*.42;const x=s.x+Math.cos(a)*r,y=s.y+Math.sin(a)*r;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+  ctx.closePath();ctx.fill();
+ }
+ for(const m of meteors){
+  ctx.fillStyle="#d94b4b";ctx.beginPath();ctx.arc(m.x,m.y,m.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#ff9b4a";ctx.beginPath();ctx.arc(m.x-m.r*.25,m.y-m.r*.2,m.r*.28,0,Math.PI*2);ctx.fill();
+ }
+ for(const p of particles){ctx.globalAlpha=Math.max(0,p.life);ctx.fillStyle="#ffd34d";ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill()}
+ ctx.globalAlpha=1;
+
+ if(gameOver){
+  ctx.fillStyle="rgba(0,0,0,.65)";ctx.fillRect(0,0,W,H);
+  ctx.textAlign="center";ctx.fillStyle="#fff";ctx.font="bold 48px Arial";ctx.fillText("GAME OVER",W/2,H/2-40);
+  ctx.font="20px Arial";ctx.fillText("Score: "+Math.floor(score)+" • Best: "+best,W/2,H/2);
+  ctx.fillStyle="#ffd34d";ctx.font="bold 17px Arial";ctx.fillText("Tap the joystick or press SPACE to restart",W/2,H/2+42);
+  ctx.textAlign="left";
+ }
+}
+function loop(t){
+ const dt=Math.min((t-last)/1000||0,.033);last=t;
+ if(running)update(dt);
+ draw();
+ requestAnimationFrame(loop);
+}
+reset();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
