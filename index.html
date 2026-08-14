@@ -33,6 +33,13 @@
     font-weight:bold; cursor:pointer; background:#ffd34d; color:#17120a;
   }
   button:hover { filter:brightness(1.08); }
+
+  #touchControls{display:none;position:fixed;left:20px;bottom:20px;width:160px;height:160px;border-radius:50%;
+    background:rgba(20,35,58,.48);border:2px solid rgba(255,255,255,.22);touch-action:none;user-select:none;z-index:10}
+  #touchStick{position:absolute;left:50%;top:50%;width:68px;height:68px;margin:-34px;border-radius:50%;
+    background:rgba(255,211,77,.85);border:2px solid rgba(255,255,255,.4);box-shadow:0 6px 20px rgba(0,0,0,.3);
+    pointer-events:none}
+  @media (pointer:coarse),(max-width:700px){#touchControls{display:block}#help{bottom:8px;font-size:11px;opacity:.7}h1{font-size:38px}.panel{padding:26px 20px}}
 </style>
 </head>
 <body>
@@ -42,12 +49,12 @@
   <div class="panel">
     <h1>SKY RUSH</h1>
     <p>Collect the golden stars, dodge the red meteors, and survive as long as you can.</p>
-    <p><b>Controls:</b> WASD / Arrow Keys · Collect ⭐ · Avoid ☄️</p>
+    <p><b>Controls:</b> WASD / Arrow Keys on PC · Touch joystick on phone · Collect ⭐ · Avoid ☄️</p>
     <button id="play">PLAY</button>
   </div>
 </div>
 
-<div id="help">Move: WASD / Arrow Keys · ⭐ Collect stars · ☄️ Avoid meteors</div>
+<div id="help">PC: WASD / Arrow Keys · Phone: Touch joystick · ⭐ Collect stars · ☄️ Avoid meteors</div><div id="touchControls"><div id="touchStick"></div></div>
 
 <script>
 const canvas = document.getElementById("game");
@@ -72,6 +79,11 @@ addEventListener("keydown", e => {
     e.preventDefault();
 });
 addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+
+// Mobile touch controls
+const touchMap={touchUp:"arrowup",touchDown:"arrowdown",touchLeft:"arrowleft",touchRight:"arrowright"};
+for(const id in touchMap){const el=document.getElementById(id),key=touchMap[id];const press=e=>{e.preventDefault();if(gameOver)reset();keys[key]=true;};const release=e=>{e.preventDefault();keys[key]=false;};el.addEventListener("pointerdown",press);el.addEventListener("pointerup",release);el.addEventListener("pointercancel",release);el.addEventListener("pointerleave",release);}
 
 let player, stars, meteors, particles, score, best, gameOver, running, spawnTimer, starTimer, last;
 
@@ -238,7 +250,7 @@ function draw() {
     ctx.textAlign="center";
     ctx.fillStyle="#fff";ctx.font="bold 52px Arial";ctx.fillText("GAME OVER",W/2,H/2-45);
     ctx.font="22px Arial";ctx.fillText("Score: "+Math.floor(score)+"   •   Best: "+best,W/2,H/2);
-    ctx.fillStyle="#ffd34d";ctx.font="bold 18px Arial";ctx.fillText("Press SPACE to play again",W/2,H/2+48);
+    ctx.fillStyle="#ffd34d";ctx.font="bold 18px Arial";ctx.fillText("Press SPACE or tap a direction to play again",W/2,H/2+48);
     ctx.textAlign="left";
   }
 }
@@ -251,6 +263,7 @@ function loop(t){
   requestAnimationFrame(loop);
 }
 play.onclick=()=>{start.style.display="none";running=true;reset();};
+  play.addEventListener("touchend", e=>{e.preventDefault(); start.style.display="none"; running=true; reset();},{passive:false});
 addEventListener("keydown",e=>{
   if(e.code==="Space" && gameOver){reset();}
 });
