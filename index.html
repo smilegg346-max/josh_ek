@@ -109,7 +109,7 @@ function spawnMeteor(){
  if(s===1){x=W+30;y=rand(0,H);vx=-rand(2,4);vy=rand(-1.5,1.5)}
  if(s===2){x=rand(0,W);y=-30;vx=rand(-1.5,1.5);vy=rand(2,4)}
  if(s===3){x=rand(0,W);y=H+30;vx=rand(-1.5,1.5);vy=-rand(2,4)}
- meteors.push({x,y,vx,vy,r:rand(15+level*.35,25+level*.45)})
+ meteors.push({x,y,vx,vy,r:rand(15+level*0.8,25+level*1.2)})
 }
 function burst(x,y,n=16){
  for(let i=0;i<n;i++){
@@ -261,7 +261,7 @@ function update(dt){
   update.spawnTimer=0;
 }
 
- for(const m of meteors){m.x+=m.vx*dt*60*(1+level*0.12);m.y+=m.vy*dt*60*(1+level*0.12)}
+ for(const m of meteors){m.x+=m.vx*dt*60*(1+level*0.18);m.y+=m.vy*dt*60*(1+level*0.18)}
  meteors=meteors.filter(m=>m.x>-80&&m.x<W+80&&m.y>-80&&m.y<H+80);
 
  for(let i=stars.length-1;i>=0;i--)if(dist(player,stars[i])<player.r+stars[i].r){
