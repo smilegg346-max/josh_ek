@@ -21,17 +21,56 @@ button{border:0;border-radius:14px;padding:14px 32px;font-size:20px;font-weight:
  #help{font-size:11px;bottom:7px}
  h1{font-size:38px}
 }
+
+#hud{position:fixed;left:0;right:0;top:0;height:58px;background:rgba(4,10,20,.62);z-index:15;display:none;align-items:center;gap:18px;padding:0 14px;font-weight:bold}
+#hud .value{color:#ffd34d}
+#menuButton{margin-left:auto;padding:8px 12px;border-radius:10px;background:#ffffff18;color:#fff;font-size:14px}
+#tabs{display:flex;justify-content:center;gap:7px;margin:12px 0}
+.tab{padding:9px 12px;background:#ffffff12;color:#fff;border-radius:10px;font-size:14px}
+.tab.active{background:#ffffff25}
+.section{display:none}.section.active{display:block}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;text-align:left}
+.card{padding:11px;border-radius:12px;background:#ffffff0b;border:1px solid #ffffff12}
+.card.locked{opacity:.48}
+.skinDot{display:inline-block;width:13px;height:13px;border-radius:50%;vertical-align:middle;margin-right:5px}
+.smallBtn{margin-top:8px;padding:8px 12px;border-radius:10px;background:#ffd34d;color:#17120a;font-weight:bold;font-size:13px}
+.smallBtn:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:600px){.cards{grid-template-columns:1fr}.panel{max-height:88vh;overflow:auto}}
+
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 
+<div id="hud">
+  ⭐ <span class="value" id="hudScore">0</span>
+  <b>LEVEL <span class="value" id="hudLevel">1</span></b>
+  🏆 <span class="value" id="hudBest">0</span>
+  <button id="menuButton" type="button">MENU</button>
+</div>
+
 <div id="start">
   <div class="panel">
     <h1>SKY RUSH</h1>
-    <p>Collect the golden stars, dodge the red meteors, and survive!</p>
-    <p><b>PC:</b> WASD / Arrow Keys<br><b>Phone:</b> Touch the joystick</p>
-    <button id="play" type="button">PLAY</button>
+    <p>Collect stars, dodge meteors, level up, unlock skins and earn achievements!</p>
+    <div id="tabs">
+      <button class="tab active" data-tab="playSection" type="button">PLAY</button>
+      <button class="tab" data-tab="skinSection" type="button">SKINS</button>
+      <button class="tab" data-tab="achSection" type="button">ACHIEVEMENTS</button>
+    </div>
+    <div id="playSection" class="section active">
+      <p id="progress"></p>
+      <button id="play" type="button">PLAY</button>
+    </div>
+    <div id="skinSection" class="section">
+      <h2>SKINS</h2>
+      <p>Unlock skins for free by collecting stars.</p>
+      <div class="cards" id="skinCards"></div>
+    </div>
+    <div id="achSection" class="section">
+      <h2>ACHIEVEMENTS</h2>
+      <div class="cards" id="achCards"></div>
+    </div>
   </div>
 </div>
 
@@ -47,7 +86,7 @@ const joy=document.getElementById("joy");
 const stick=document.getElementById("stick");
 
 let W=innerWidth,H=innerHeight,dpr=1;
-let player,stars,meteors,particles,score,best=0,gameOver=false,running=false,last=0;
+let player,stars,meteors,particles,score,best=0,level=1,gameOver=false,running=false,last=0;
 const keys=Object.create(null);
 
 function resize(){
@@ -70,7 +109,7 @@ function spawnMeteor(){
  if(s===1){x=W+30;y=rand(0,H);vx=-rand(2,4);vy=rand(-1.5,1.5)}
  if(s===2){x=rand(0,W);y=-30;vx=rand(-1.5,1.5);vy=rand(2,4)}
  if(s===3){x=rand(0,W);y=H+30;vx=rand(-1.5,1.5);vy=-rand(2,4)}
- meteors.push({x,y,vx,vy,r:rand(15,25)})
+ meteors.push({x,y,vx,vy,r:rand(15+level*.35,25+level*.45)})
 }
 function burst(x,y,n=16){
  for(let i=0;i<n;i++){
@@ -78,9 +117,67 @@ function burst(x,y,n=16){
   particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:rand(2,5)})
  }
 }
+
+const SKINS={
+ blue:{name:"Blue",color:"#4fc3ff",glow:"rgba(82,190,255,.5)",need:0,style:"classic"},
+ red:{name:"Crimson Fighter",color:"#ff5d66",glow:"rgba(255,93,102,.5)",need:50,style:"fighter"},
+ purple:{name:"Void Orb",color:"#b56cff",glow:"rgba(181,108,255,.5)",need:150,style:"orb"},
+ green:{name:"Emerald Dragon",color:"#5df0a2",glow:"rgba(93,240,162,.5)",need:300,style:"dragon"},
+ gold:{name:"Golden Star",color:"#ffd34d",glow:"rgba(255,211,77,.5)",need:500,style:"star"},
+ cyan:{name:"Cyber Cube",color:"#48e7ff",glow:"rgba(72,231,255,.5)",need:750,style:"cube"},
+ pink:{name:"Cosmic Heart",color:"#ff6fcf",glow:"rgba(255,111,207,.5)",need:1000,style:"heart"},
+ orange:{name:"Solar Flame",color:"#ff9b3d",glow:"rgba(255,155,61,.5)",need:1500,style:"flame"},
+ ice:{name:"Ice Crystal",color:"#b9f4ff",glow:"rgba(185,244,255,.5)",need:2000,style:"crystal"},
+ black:{name:"Shadow Reaper",color:"#8d8d9c",glow:"rgba(80,80,100,.7)",need:3000,style:"reaper"},
+ rainbow:{name:"Prismatic Nova",color:"#ffffff",glow:"rgba(255,255,255,.7)",need:5000,style:"rainbow"}
+};
+const ACHIEVEMENTS=[
+ ["first","First Flight","Play your first game."],
+ ["stars50","Star Collector","Collect 50 total stars."],
+ ["stars200","Star Hunter","Collect 200 total stars."],
+ ["level5","Getting Good","Reach level 5."],
+ ["level10","Sky Master","Reach level 10."],
+ ["score250","High Flyer","Score 250 points in one run."],
+ ["score500","Sky Legend","Score 500 points in one run."],
+ ["stars500","Star Hoarder","Collect 500 total stars."],
+ ["level15","Meteor Master","Reach level 15."],
+ ["score1000","Unstoppable","Score 1,000 points in one run."],
+ ["stars1000","Star Millionaire","Collect 1,000 total stars."],
+ ["level20","Cosmic Champion","Reach level 20."]
+];
+let save;
+try{save=JSON.parse(localStorage.getItem("skyRushSave")||"null")}catch(e){save=null}
+if(!save)save={best:0,totalStars:0,selected:"blue",owned:["blue"],ach:{},games:0};
+function persist(){try{localStorage.setItem("skyRushSave",JSON.stringify(save))}catch(e){}}
+function unlock(id){if(!save.ach[id]){save.ach[id]=true;persist()}}
+function renderMenu(){
+ document.getElementById("progress").textContent=`Best: ${Math.floor(save.best)} • Total stars: ${save.totalStars} • Skin: ${SKINS[save.selected].name}`;
+ const sc=document.getElementById("skinCards");sc.innerHTML="";
+ for(const [id,s] of Object.entries(SKINS)){
+  const owned=save.owned.includes(id),d=document.createElement("div");
+  d.className="card"+(owned?"":" locked");
+  d.innerHTML=`<b><span class="skinDot" style="background:${s.color}"></span>${s.name}</b><br><small>${owned?"Unlocked":"Need "+s.need+" stars"}</small><br>`;
+  const b=document.createElement("button");b.className="smallBtn";
+  b.textContent=owned?(save.selected===id?"EQUIPPED":"EQUIP"):"LOCKED";b.disabled=!owned;
+  if(owned)b.onclick=()=>{save.selected=id;persist();renderMenu()};
+  d.appendChild(b);sc.appendChild(d);
+ }
+ const ac=document.getElementById("achCards");ac.innerHTML="";
+ for(const [id,name,desc] of ACHIEVEMENTS){
+  const d=document.createElement("div");d.className="card"+(save.ach[id]?"":" locked");
+  d.innerHTML=`<b>${save.ach[id]?"🏆":"🔒"} ${name}</b><br><small>${desc}</small>`;
+  ac.appendChild(d);
+ }
+}
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{
+ document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+ document.querySelectorAll(".section").forEach(x=>x.classList.remove("active"));
+ b.classList.add("active");document.getElementById(b.dataset.tab).classList.add("active");
+}));
+
 function reset(){
  player={x:W/2,y:H/2,r:18,speed:5.4};
- stars=[];meteors=[];particles=[];score=0;gameOver=false;
+ stars=[];meteors=[];particles=[];score=0;level=1;gameOver=false;update.starTimer=0;update.spawnTimer=0;
  for(let i=0;i<3;i++)spawnStar();
  for(let i=0;i<2;i++)spawnMeteor();
 }
@@ -88,11 +185,18 @@ function reset(){
 function startGame(e){
  if(e)e.preventDefault();
  start.style.display="none";
+ document.getElementById("hud").style.display="flex";
  running=true;
+ save.games++;unlock("first");persist();
  reset();
 }
 play.addEventListener("click",startGame);
 play.addEventListener("touchend",startGame,{passive:false});
+document.getElementById("menuButton").addEventListener("click",()=>{
+ running=false;gameOver=false;
+ document.getElementById("hud").style.display="none";
+ start.style.display="flex";renderMenu();
+});
 
 addEventListener("keydown",e=>{
  keys[e.key.toLowerCase()]=true;
@@ -134,38 +238,107 @@ function update(dt){
  if(gameOver)return;
  let dx=(keys.d||keys.arrowright||keys.right?1:0)-(keys.a||keys.arrowleft||keys.left?1:0);
  let dy=(keys.s||keys.arrowdown||keys.down?1:0)-(keys.w||keys.arrowup||keys.up?1:0);
- if(dx||dy){
-  const l=Math.hypot(dx,dy);dx/=l;dy/=l;
-  player.x+=dx*player.speed*dt*60;
-  player.y+=dy*player.speed*dt*60;
- }
- player.x=Math.max(player.r,Math.min(W-player.r,player.x));
- player.y=Math.max(65,Math.min(H-player.r,player.y));
+ if(dx||dy){const l=Math.hypot(dx,dy);dx/=l;dy/=l;player.x+=dx*player.speed*dt*60;player.y+=dy*player.speed*dt*60}
+ player.x=Math.max(player.r,Math.min(W-player.r,player.x));player.y=Math.max(65,Math.min(H-player.r,player.y));
 
- if(!update.starTimer)update.starTimer=0;
- if(!update.spawnTimer)update.spawnTimer=0;
+ score+=dt*1.5;level=Math.min(20,1+Math.floor(score/50));
+ document.getElementById("hudScore").textContent=Math.floor(score);
+ document.getElementById("hudLevel").textContent=level;
+ document.getElementById("hudBest").textContent=Math.floor(save.best);
+ if(level>=5)unlock("level5");
+ if(level>=10)unlock("level10");
+ if(score>=250)unlock("score250");
+ if(score>=500)unlock("score500");
+
+ if(!update.starTimer)update.starTimer=0;if(!update.spawnTimer)update.spawnTimer=0;
  update.starTimer+=dt;update.spawnTimer+=dt;
- if(update.starTimer>2.2&&stars.length<5){spawnStar();update.starTimer=0}
- const interval=Math.max(.45,1.25-score/180);
- if(update.spawnTimer>interval){spawnMeteor();update.spawnTimer=0}
-
- for(let i=stars.length-1;i>=0;i--)if(dist(player,stars[i])<player.r+stars[i].r){
-  score+=10;burst(stars[i].x,stars[i].y,18);stars.splice(i,1)
- }
- for(const m of meteors){
-  m.x+=m.vx*dt*60;m.y+=m.vy*dt*60;
-  if(dist(player,m)<player.r+m.r-5){
-   burst(player.x,player.y,35);gameOver=true;best=Math.max(best,Math.floor(score));
-   try{localStorage.setItem("skyRushBest",best)}catch(e){}
-  }
- }
- meteors=meteors.filter(m=>m.x>-80&&m.x<W+80&&m.y>-80&&m.y<H+80);
- for(const p of particles){p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.life-=dt*1.7;p.vx*=.98;p.vy*=.98}
- particles=particles.filter(p=>p.life>0);
- score+=dt*1.5;
+ if(update.starTimer>Math.max(1.2,2.2-level*.08)&&stars.length<5){spawnStar();update.starTimer=0}
+ if(update.spawnTimer>Math.max(.22,1.25-level*.055)){
+  spawnMeteor();
+  update.spawnTimer=0;
 }
 
+ for(const m of meteors){m.x+=m.vx*dt*60*(1+level*.085);m.y+=m.vy*dt*60*(1+level*.085)}
+ meteors=meteors.filter(m=>m.x>-80&&m.x<W+80&&m.y>-80&&m.y<H+80);
+
+ for(let i=stars.length-1;i>=0;i--)if(dist(player,stars[i])<player.r+stars[i].r){
+  score+=10;save.totalStars++;burst(stars[i].x,stars[i].y,18);stars.splice(i,1);
+  if(save.totalStars>=50&&!save.owned.includes("red"))save.owned.push("red");
+  if(save.totalStars>=150&&!save.owned.includes("purple"))save.owned.push("purple");
+  if(save.totalStars>=300&&!save.owned.includes("green"))save.owned.push("green");
+  if(save.totalStars>=500&&!save.owned.includes("gold"))save.owned.push("gold");
+  if(save.totalStars>=750&&!save.owned.includes("cyan"))save.owned.push("cyan");
+  if(save.totalStars>=1000&&!save.owned.includes("pink"))save.owned.push("pink");
+  if(save.totalStars>=1500&&!save.owned.includes("orange"))save.owned.push("orange");
+  if(save.totalStars>=2000&&!save.owned.includes("ice"))save.owned.push("ice");
+  if(save.totalStars>=3000&&!save.owned.includes("black"))save.owned.push("black");
+  if(save.totalStars>=5000&&!save.owned.includes("rainbow"))save.owned.push("rainbow");
+  if(save.totalStars>=50)unlock("stars50");
+  if(save.totalStars>=200)unlock("stars200");
+  if(save.totalStars>=500)unlock("stars500");
+  if(save.totalStars>=1000)unlock("stars1000");
+  persist();
+ }
+ for(const m of meteors)if(dist(player,m)<player.r+m.r-5){
+  burst(player.x,player.y,35);gameOver=true;save.best=Math.max(save.best,Math.floor(score));persist();
+ }
+ particles.forEach(p=>{p.x+=p.vx*dt*60;p.y+=p.vy*dt*60;p.life-=dt*1.7;p.vx*=.98;p.vy*=.98});
+ particles=particles.filter(p=>p.life>0);
+}
+
+function drawPlayer(){
+ const s=SKINS[save.selected];
+ ctx.save();ctx.translate(player.x,player.y);
+ const glow=ctx.createRadialGradient(0,0,2,0,0,50);
+ glow.addColorStop(0,s.glow);glow.addColorStop(1,"rgba(0,0,0,0)");
+ ctx.fillStyle=glow;ctx.beginPath();ctx.arc(0,0,50,0,Math.PI*2);ctx.fill();
+
+ if(s.style==="fighter"){
+  ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,-23);ctx.lineTo(18,15);ctx.lineTo(7,12);ctx.lineTo(0,22);ctx.lineTo(-7,12);ctx.lineTo(-18,15);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(0,-7,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#ff9b5c";ctx.fillRect(-12,15,6,8);ctx.fillRect(6,15,6,8);
+ }else if(s.style==="orb"){
+  ctx.strokeStyle=s.color;ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,0,25,10,-.45,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle="#24123d";ctx.beginPath();ctx.arc(0,0,17,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle="#e6c8ff";ctx.lineWidth=2;ctx.beginPath();ctx.arc(-5,-4,5,0,Math.PI*2);ctx.stroke();
+ }else if(s.style==="dragon"){
+  ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,-21);ctx.lineTo(18,-6);ctx.lineTo(14,16);ctx.lineTo(0,22);ctx.lineTo(-14,16);ctx.lineTo(-18,-6);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#b8ffe0";ctx.beginPath();ctx.moveTo(-13,-12);ctx.lineTo(-22,-24);ctx.lineTo(-9,-17);ctx.fill();ctx.beginPath();ctx.moveTo(13,-12);ctx.lineTo(22,-24);ctx.lineTo(9,-17);ctx.fill();
+  ctx.fillStyle="#111";ctx.beginPath();ctx.arc(-6,-4,3,0,Math.PI*2);ctx.arc(6,-4,3,0,Math.PI*2);ctx.fill();
+ }else if(s.style==="star"){
+  starPath(0,0,23,-Math.PI/2);ctx.fillStyle=s.color;ctx.shadowBlur=18;ctx.shadowColor=s.color;ctx.fill();ctx.shadowBlur=0;
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-7,-2,4,0,Math.PI*2);ctx.arc(7,-2,4,0,Math.PI*2);ctx.fill();
+ }else if(s.style==="cube"){
+  ctx.fillStyle=s.color;ctx.fillRect(-19,-19,38,38);
+  ctx.strokeStyle="#d9fbff";ctx.lineWidth=3;ctx.strokeRect(-12,-12,24,24);
+  ctx.fillStyle="#12343d";ctx.fillRect(-9,-4,6,6);ctx.fillRect(3,-4,6,6);
+ }else if(s.style==="heart"){
+  ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,20);ctx.bezierCurveTo(-35,-2,-17,-25,0,-10);ctx.bezierCurveTo(17,-25,35,-2,0,20);ctx.fill();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-7,-3,3,0,Math.PI*2);ctx.arc(7,-3,3,0,Math.PI*2);ctx.fill();
+ }else if(s.style==="flame"){
+  ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,24);ctx.bezierCurveTo(-22,10,-18,-7,-6,-17);ctx.bezierCurveTo(-7,-4,4,-4,2,-24);ctx.bezierCurveTo(20,-8,22,10,0,24);ctx.fill();
+  ctx.fillStyle="#fff0b0";ctx.beginPath();ctx.arc(0,7,6,0,Math.PI*2);ctx.fill();
+ }else if(s.style==="crystal"){
+  ctx.fillStyle=s.color;ctx.beginPath();ctx.moveTo(0,-25);ctx.lineTo(19,-8);ctx.lineTo(11,20);ctx.lineTo(-11,20);ctx.lineTo(-19,-8);ctx.closePath();ctx.fill();
+  ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.moveTo(0,-20);ctx.lineTo(7,0);ctx.lineTo(0,16);ctx.lineTo(-7,0);ctx.closePath();ctx.fill();
+ }else if(s.style==="reaper"){
+  ctx.fillStyle="#181824";ctx.beginPath();ctx.arc(0,2,17,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=s.color;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-18,-8);ctx.quadraticCurveTo(0,-30,18,-8);ctx.stroke();
+  ctx.fillStyle="#ff4f6d";ctx.beginPath();ctx.arc(-6,1,3,0,Math.PI*2);ctx.arc(6,1,3,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=s.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-12,19);ctx.lineTo(12,-20);ctx.stroke();
+ }else if(s.style==="rainbow"){
+  for(let i=0;i<6;i++){ctx.beginPath();ctx.strokeStyle=`hsl(${i*60},100%,65%)`;ctx.lineWidth=5;ctx.arc(0,0,10+i*3,0,Math.PI*2);ctx.stroke()}
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(-6,-2,3,0,Math.PI*2);ctx.arc(6,-2,3,0,Math.PI*2);ctx.fill();
+ }else{
+  ctx.fillStyle=s.color;ctx.beginPath();ctx.arc(0,0,18,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#e9f8ff";ctx.beginPath();ctx.arc(-6,-5,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#12243c";ctx.beginPath();ctx.arc(-7,-5,2,0,Math.PI*2);ctx.fill();
+ }
+ ctx.restore();
+}
 function draw(){
+ if(player)drawPlayer();
  const g=ctx.createLinearGradient(0,0,0,H);
  g.addColorStop(0,"#0b2340");g.addColorStop(1,"#07101d");
  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
@@ -182,7 +355,7 @@ function draw(){
   const glow=ctx.createRadialGradient(player.x,player.y,2,player.x,player.y,45);
   glow.addColorStop(0,"rgba(82,190,255,.5)");glow.addColorStop(1,"rgba(82,190,255,0)");
   ctx.fillStyle=glow;ctx.beginPath();ctx.arc(player.x,player.y,45,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle="#4fc3ff";ctx.beginPath();ctx.arc(player.x,player.y,player.r,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=SKINS[save.selected].color;ctx.beginPath();ctx.arc(player.x,player.y,player.r,0,Math.PI*2);ctx.fill();
   ctx.fillStyle="#e9f8ff";ctx.beginPath();ctx.arc(player.x-6,player.y-5,5,0,Math.PI*2);ctx.fill();
  }
 
@@ -212,7 +385,7 @@ function loop(t){
  draw();
  requestAnimationFrame(loop);
 }
-reset();
+reset();renderMenu();
 requestAnimationFrame(loop);
 </script>
 </body>
